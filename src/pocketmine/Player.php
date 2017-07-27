@@ -2771,23 +2771,39 @@ class Player extends Human implements CommandSender, InventoryHolder, ChunkLoade
 							break;
 						}
 						$target = $this->level->getBlock($pos);
+                        //changed $target-getId(...)
 						$ev = new PlayerInteractEvent($this, $this->inventory->getItemInHand(), $target, $packet->face, $target->getId() === 0 ? PlayerInteractEvent::LEFT_CLICK_AIR : PlayerInteractEvent::LEFT_CLICK_BLOCK);
+                        
 						$this->getServer()->getPluginManager()->callEvent($ev);
-						if(!$ev->isCancelled()){
-							$side = $target->getSide($packet->face);
-							if($side instanceof Fire){
-								$side->getLevel()->setBlock($side, new Air());
-								break;
-							}
-							$this->lastBreak = microtime(true);
+						if($ev->isCancelled()){
+                            $this->inventory->sendHeldItem($this);
+                            break;
 						}else{
-							$this->inventory->sendHeldItem($this);
+                            $side = $target->getSide($packet->face);
+                            if($side instanceof Fire){
+                                $side->getLevel()->setBlock($side, new Air());
+                                break;
+                            }
+                            //changed new if
+                            if(!$this->isCreative()){
+                                //TODO: improve this to take stuff like swimming, ladders, enchanted tools into account, fix wrong tool break time calculations for bad tools (pmmp/PocketMine-MP#211)
+                                $breakTime = ceil($target->getBreakTime($this->inventory->getItemInHand()) * 20);
+                                if($breakTime > 0){
+                                    $this->level->broadcastLevelEvent($pos, LevelEventPacket::EVENT_BLOCK_START_BREAK, 65535 / $breakTime);
+                                }
+                            }
+                            //changeEndLine
+                            $this->lastBreak = microtime(true);
+                            break;
 						}
 						break;
 					case PlayerActionPacket::ACTION_ABORT_BREAK:
 						$this->lastBreak = PHP_INT_MAX;
 						break;
 					case PlayerActionPacket::ACTION_STOP_BREAK:
+                        //changed new line
+                        $this->level->broadcastLevelEvent($pos, LevelEventPacket::EVENT_BLOCK_STOP_BREAK);
+                        //changeEndLine
 						break;
 					case PlayerActionPacket::ACTION_RELEASE_ITEM:
 						if($this->startAction > -1 and $this->getDataFlag(self::DATA_FLAGS, self::DATA_FLAG_ACTION)){
@@ -2897,8 +2913,6 @@ class Player extends Human implements CommandSender, InventoryHolder, ChunkLoade
 						break;
 					case PlayerActionPacket::ACTION_STOP_SLEEPING:
 						$this->stopSleep();
-						break;
-					case PlayerActionPacket::ACTION_SPAWN_NETHER:
 						break;
 					case PlayerActionPacket::ACTION_SPAWN_SAME_DIMENSION:
 					case PlayerActionPacket::ACTION_SPAWN_OVERWORLD:
@@ -3999,9 +4013,6 @@ class Player extends Human implements CommandSender, InventoryHolder, ChunkLoade
 			foreach($this->usedChunks as $index => $d){
 				Level::getXZ($index, $chunkX, $chunkZ);
 				$this->level->unregisterChunkLoader($this, $chunkX, $chunkZ);
-				foreach($this->level->getChunkEntities($chunkX, $chunkZ) as $entity){
-					$entity->despawnFrom($this, false);
-				}
 				unset($this->usedChunks[$index]);
 			}
 
